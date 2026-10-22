@@ -346,14 +346,19 @@ class Logger {
     // );
   }
 
-  /** Strip sensitive fields like password, token, key, secret */
+  /** Strip sensitive fields like password, token, key, secret, notes */
   private sanitizeData(data: unknown): unknown {
+    if (typeof data === 'string') {
+      return data.replace(/([?&]apikey=)[^&\s]+/gi, '$1***REDACTED***');
+    }
     if (data && typeof data === 'object') {
       const obj = JSON.parse(JSON.stringify(data));
       const sanitize = (o: Record<string, unknown>) => {
         Object.keys(o).forEach(key => {
-          if (/password|secret|token|key|credential|apikey/i.test(key)) {
+          if (/password|secret|token|key|credential|apikey|notes/i.test(key)) {
             o[key] = '***REDACTED***';
+          } else if (typeof o[key] === 'string') {
+            o[key] = (o[key] as string).replace(/([?&]apikey=)[^&\s]+/gi, '$1***REDACTED***');
           } else if (o[key] && typeof o[key] === 'object') {
             sanitize(o[key] as Record<string, unknown>);
           }

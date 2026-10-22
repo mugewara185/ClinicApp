@@ -26,13 +26,36 @@ export const BookingPage = () => {
   }, []);
 
   const handleSuccess = (result: BookingResult, formData: BookingFormData) => {
-    logger.info('booking:page', 'Booking completed', { bookingId: result.bookingId });
+    const isSimulated = result.mode === 'mock' || result.deliveryStatus === 'simulated';
+    logger.info('booking:page', 'Booking completed', {
+      bookingId: result.bookingId,
+      mode: result.mode ?? 'real',
+      deliveryStatus: result.deliveryStatus ?? 'accepted',
+    });
     setBookingResult(result);
     setLastFormData(formData);
     setSubmitted(true);
-    showToast('Appointment request sent! We\'ll confirm within 24 hours.', 'success', 6000);
+    if (isSimulated) {
+      showToast(
+        'Appointment request simulated (mock mode — no real WhatsApp notification sent).',
+        'info',
+        6000
+      );
+    } else {
+      showToast(
+        'Appointment request submitted; notification accepted by the provider.',
+        'success',
+        6000
+      );
+    }
     // Scroll to top of booking section
-    document.querySelector('#booking')?.scrollIntoView({ behavior: 'smooth' });
+    if (typeof document !== 'undefined') {
+      document.querySelector('#booking')?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleError = (errorMessage: string) => {
+    showToast(errorMessage, 'error', 6000);
   };
 
   const handleReset = () => {
@@ -70,7 +93,7 @@ export const BookingPage = () => {
                   onReset={handleReset}
                 />
               ) : (
-                <BookingForm onSuccess={handleSuccess} />
+                <BookingForm onSuccess={handleSuccess} onError={handleError} />
               )}
             </div>
           </div>

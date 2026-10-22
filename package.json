@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --no-warnings --import ./scripts/ts-loader.mjs --test tests/whatsapp-booking.test.tsx"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

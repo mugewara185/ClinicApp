@@ -4,16 +4,17 @@
  * Submits via BookingService which sends WhatsApp notification.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  User, Phone, Calendar, Clock, MessageSquare, Send, Loader2, ChevronDown,
+  User, Phone, Calendar, Clock, MessageSquare, Send, Loader2, ChevronDown, AlertCircle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { componentLogger } from '../../../framework/logging/domains/component';
 import { logger } from '../../../framework/logging/core/Logger';
 import { bookingSchema, SESSION_TYPES, TIME_SLOTS, type BookingFormData } from '../schemas/booking.schema';
+import type { BookingResult } from '../services/BookingService';
 
 // ---------------------------------------------------------------------------
 // Field wrapper
@@ -35,10 +36,13 @@ const getMaxDate = () => {
 };
 
 interface Props {
-  onSuccess: (result: { success: boolean; bookingId: string; message: string }, formData: BookingFormData) => void;
+  onSuccess: (result: BookingResult, formData: BookingFormData) => void;
+  onError?: (errorMessage: string) => void;
 }
 
-export const BookingForm = ({ onSuccess }: Props) => {
+export const BookingForm = ({ onSuccess, onError }: Props) => {
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const {
     register,
     handleSubmit,
@@ -55,10 +59,12 @@ export const BookingForm = ({ onSuccess }: Props) => {
   }, []);
 
   const onSubmit = async (data: BookingFormData) => {
+    setSubmitError(null);
     logger.info('booking:form:submit', 'Form submitted', {
-      patient: data.fullName,
       session: data.sessionType,
       date: data.preferredDate,
+      time: data.preferredTime,
+      hasNotes: Boolean(data.message?.trim()),
     });
 
     try {
@@ -68,8 +74,11 @@ export const BookingForm = ({ onSuccess }: Props) => {
       onSuccess(result, data);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      logger.error('booking:form:error', 'Booking submission failed', error);
-      throw err; // Let RHF handle it
+      logger.error('booking:form:error', 'Booking submission failed', {
+        error: error.message,
+      });
+      setSubmitError(error.message);
+      onError?.(error.message);
     }
   };
 
@@ -218,11 +227,29 @@ export const BookingForm = ({ onSuccess }: Props) => {
         <FieldError message={errors.message?.message} />
       </div>
 
+      {/* Submission Error Banner */}
+      {submitError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-start gap-3 p-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm"
+        >
+          <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold">Unable to send appointment notification</p>
+            <p className="text-red-600 leading-relaxed">{submitError}</p>
+            <p className="text-xs text-red-500">
+              Your appointment request has not been saved or delivered yet. Please try again or contact the clinic directly by phone or WhatsApp.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Privacy note */}
       <p className="text-xs text-slate-400 flex items-start gap-1.5">
         <span>🔒</span>
-        Your information is confidential and will only be used to confirm your appointment.
-        No account required.
+        Your information is confidential and used only to notify the clinic of your appointment request.
+        Additional notes are kept private and excluded from WhatsApp notifications.
       </p>
 
       {/* Submit */}

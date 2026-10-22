@@ -24,6 +24,11 @@ export class FeatureToggle {
 
   enable(name: string): void {
     this.features.set(name, true);
+    if (name === 'whatsappEnabled' && this.features.get('mockBooking')) {
+      this.features.set('mockBooking', false);
+    } else if (name === 'mockBooking' && this.features.get('whatsappEnabled')) {
+      this.features.set('whatsappEnabled', false);
+    }
     logger.info('dev:feature:enable', `Feature "${name}" enabled`);
   }
 
@@ -34,12 +39,17 @@ export class FeatureToggle {
 
   toggle(name: string): void {
     const current = this.features.get(name) ?? false;
-    this.features.set(name, !current);
-    logger.info('dev:feature:toggle', `Feature "${name}" toggled to ${!current}`);
+    const next = !current;
+    this.features.set(name, next);
+    if (next && name === 'whatsappEnabled' && this.features.get('mockBooking')) {
+      this.features.set('mockBooking', false);
+    } else if (next && name === 'mockBooking' && this.features.get('whatsappEnabled')) {
+      this.features.set('whatsappEnabled', false);
+    }
+    logger.info('dev:feature:toggle', `Feature "${name}" toggled to ${next}`);
   }
 
   isEnabled(name: string): boolean {
-    console.log(`------>FeatureToggle: isEnabled('${name}') = ${this.features.get(name) ?? false}`);
     return this.features.get(name) ?? false;
   }
 

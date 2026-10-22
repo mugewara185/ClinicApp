@@ -52,15 +52,48 @@ factory.schema('testimonial', testimonialSchemaDef);
 // 3. Register feature flags
 // ---------------------------------------------------------------------------
 
-features.register('whatsappEnabled', import.meta.env.VITE_WHATSAPP_ENABLED === 'true');
-features.register('showDevPanel',    import.meta.env.DEV);
-features.register('mockBooking',     import.meta.env.DEV);
+export interface BookingFeatureEnv {
+  DEV?: boolean;
+  PROD?: boolean;
+  VITE_WHATSAPP_ENABLED?: string;
+  VITE_MOCK_BOOKING?: string;
+}
+
+/**
+ * Resolves initial feature flags deterministically:
+ * - If MOCK_BOOKING / VITE_MOCK_BOOKING is explicitly 'true', mock mode is enabled and real WhatsApp is disabled.
+ * - Otherwise, if WHATSAPP_ENABLED / VITE_WHATSAPP_ENABLED is 'true', real WhatsApp is enabled and mockBooking is false (even in DEV).
+ * - Otherwise, mockBooking defaults to true in DEV and false in PROD.
+ */
+export const resolveBookingFeatureFlags = (
+  env: BookingFeatureEnv
+): { whatsappEnabled: boolean; mockBooking: boolean } => {
+  const explicitWhatsapp = env.VITE_WHATSAPP_ENABLED === 'true';
+  const explicitMockTrue = env.VITE_MOCK_BOOKING === 'true';
+  const explicitMockFalse = env.VITE_MOCK_BOOKING === 'false';
+
+  const whatsappEnabled = explicitWhatsapp && !explicitMockTrue;
+  const mockBooking = explicitMockTrue
+    ? true
+    : explicitMockFalse
+      ? false
+      : Boolean(env.DEV) && !explicitWhatsapp;
+
+  return { whatsappEnabled, mockBooking };
+};
+
+const rawEnv = (import.meta.env ?? {}) as BookingFeatureEnv;
+const initialFlags = resolveBookingFeatureFlags(rawEnv);
+
+features.register('whatsappEnabled', initialFlags.whatsappEnabled);
+features.register('showDevPanel',    Boolean(rawEnv.DEV));
+features.register('mockBooking',     initialFlags.mockBooking);
 
 // ---------------------------------------------------------------------------
 // 4. Expose window.__DEV__ in development
 // ---------------------------------------------------------------------------
 
-if (import.meta.env.DEV) {
+if (rawEnv.DEV && typeof window !== 'undefined') {
   (window as unknown as { __DEV__: unknown }).__DEV__ = {
     logger,
     factory,
@@ -85,3 +118,4 @@ if (import.meta.env.DEV) {
 } else {
   logger.info('framework:init', '🚀 RDF Framework initialized (production mode)');
 }
+

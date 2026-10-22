@@ -1,6 +1,6 @@
 # 🏥 MindCare Clinic — Psychological Clinic Landing Page
 
-> A modern, production-ready frontend for a psychological clinic featuring appointment booking and WhatsApp notifications, built with **React**, **TypeScript**, **Vite**, **Tailwind CSS**, and following the **React Developer Framework (RDF)** methodology.
+> A modern frontend and serverless notification integration for a psychological clinic featuring appointment booking and server-side WhatsApp notifications, built with **React**, **TypeScript**, **Vite**, **Tailwind CSS**, and following the **React Developer Framework (RDF)** methodology.
 
 ---
 
@@ -14,132 +14,82 @@
   - **Patient Testimonials Carousel**: Auto-scrolling verified patient feedback generated via `DataFactory`.
   - **Interactive FAQ Accordion**: Frequently asked questions addressing confidentiality, first session expectations, and online therapy options.
 - **Frictionless Appointment Booking**:
-  - Clean form with Full Name, Phone / WhatsApp, Session Type, Preferred Date (picker restricted to future dates), Preferred Time Slot, and optional message.
+  - Clean form with Full Name, Phone / WhatsApp, Session Type, Preferred Date (picker restricted to future dates), Preferred Time Slot, and optional private notes.
   - Zero sign-up / login barrier for patients.
-  - Client-side validation powered by **React Hook Form** + **Zod**.
-- **WhatsApp Notification Integration**:
-  - Automatically notifies the clinic owner's WhatsApp upon appointment submission via the **CallMeBot API**.
-  - Formatted message includes patient name, phone number, session type, date, time slot, and patient notes.
-  - **Development Mode**: Mocked API with configurable network delays and full RDF logging (no actual messages sent).
-  - **Production Mode**: Direct HTTP GET call to CallMeBot WhatsApp gateway using environment variables.
+  - Client-side validation powered by **React Hook Form** + **Zod**, reinforced by server-side validation and normalization.
+- **Server-Side WhatsApp Notification Integration**:
+  - Dispatches appointment notifications to the clinic owner's WhatsApp via a server-side endpoint (`POST /api/booking/whatsapp`) backed by **CallMeBot**.
+  - Keeps `CALLMEBOT_APIKEY` and `CALLMEBOT_PHONE` strictly on the server (never exposed in client-side `VITE_` variables).
+  - Inspects both the HTTP status code and the CallMeBot response body to distinguish true provider acceptance (`Message queued`) from provider-level rejections (`APIKey is invalid`, `ERROR: ...`).
+  - Protects patient privacy by excluding free-text clinical notes from WhatsApp messages and redacting sensitive data from logs.
+  - **Mock Mode**: Simulates notifications locally when `WHATSAPP_ENABLED=false` in development and clearly labels the result as simulated.
+  - **Real Mode**: Executes the real server-to-CallMeBot flow in both development and production whenever `WHATSAPP_ENABLED=true`.
 - **RDF (React Developer Framework) Architecture**:
   - **DataFactory**: Schema-driven test data generation with deterministic seeding and relationship support.
-  - **Structured Logger**: Hierarchical namespaced logging (`api:*`, `component:*`, `booking:*`), colored console output, and automatic `localStorage` persistence.
+  - **Structured Logger**: Hierarchical namespaced logging (`api:*`, `component:*`, `booking:*`), colored console output, automatic sanitization, and `localStorage` persistence.
   - **DevToolkit**: Network delay simulator (`ApiSimulator`), error injection, and boolean feature flags (`FeatureToggle`).
-  - **Console Diagnostics (`window.__DEV__`)**: Real-time access in developer console to query logs, test slow networks, and generate mock schemas.
-  - **Shared Layer**: Reusable `useApi`, `useLocalStorage`, `useAsync` hooks, response wrappers, and validators.
+  - **Console Diagnostics (`window.__DEV__`)**: Real-time access in developer console to query logs, test slow networks, and toggle feature flags.
 - **Resilience & UX**:
   - React **ErrorBoundary** logging critical errors to RDF logger.
-  - Self-contained **Toast notification** system for feedback.
+  - Accessible inline error banners and **Toast notifications** for submission feedback.
   - Fully responsive from mobile (375px) to ultra-wide displays.
 
 ---
 
-## 🏗️ Project Architecture (RDF)
+## 🏗️ Project Architecture
 
 ```
 clinic-app/
+├── api/
+│   └── booking/
+│       └── whatsapp.ts                 # Vercel Serverless Function (POST /api/booking/whatsapp)
 ├── public/
+├── scripts/
+│   ├── ts-hooks.mjs                    # Node ESM TypeScript/TSX loader hooks for tests
+│   └── ts-loader.mjs                   # Node test runner loader entry
 ├── src/
+│   ├── server/
+│   │   └── whatsappNotification.ts     # Core server validation, rate limiting & CallMeBot client
 │   ├── framework/                      # RDF Core Layer
 │   │   ├── data-factory/               # Schema-driven mock data generator
-│   │   │   ├── core/
-│   │   │   │   ├── FactoryBuilder.ts   # Core builder & field generator resolver
-│   │   │   │   ├── FactoryRegistry.ts  # Registry storing schemas & records
-│   │   │   │   └── types.ts            # SchemaDef, FieldDef, GeneratorContext
-│   │   │   ├── hooks/
-│   │   │   │   └── useFactory.ts       # React hook for data generation
-│   │   │   └── index.ts
-│   │   ├── dev-toolkit/                # Developer utilities & simulators
-│   │   │   ├── simulators/
-│   │   │   │   ├── ApiSimulator.ts     # Delays, random delays, error injection
-│   │   │   │   └── FeatureToggle.ts    # Dynamic feature flags
-│   │   │   └── index.ts
-│   │   ├── logging/                    # Structured logging system
-│   │   │   ├── core/
-│   │   │   │   ├── Logger.ts           # Core logger with localStorage persistence
-│   │   │   │   └── types.ts            # LogEntry, LogLevel, LoggerConfig, LogStats
-│   │   │   ├── domains/
-│   │   │   │   ├── api.ts              # apiLogger (request, response, error, cached)
-│   │   │   │   └── component.ts        # componentLogger (mount, unmount, render, effect)
-│   │   │   └── index.ts
-│   │   ├── schemas/                    # RDF Entity Schemas
-│   │   │   ├── clinic.ts               # Clinic profile & operating hours
-│   │   │   ├── doctor.ts               # Doctor schema (qualifications, bio, ratings)
-│   │   │   ├── service.ts              # Psychological services schema & static list
-│   │   │   └── testimonial.ts          # Patient feedback schema
-│   │   └── init.ts                     # Framework bootstrap & window.__DEV__ export
-│   │
-│   ├── features/                       # Modular Feature Layer
+│   │   ├── dev-toolkit/                # ApiSimulator & FeatureToggle
+│   │   ├── logging/                    # Structured logging with secret/note redaction
+│   │   ├── schemas/                    # Clinic, doctor, service & testimonial schemas
+│   │   └── init.ts                     # Framework bootstrap & deterministic mode resolution
+│   ├── features/
 │   │   ├── home/                       # Landing Page Feature
-│   │   │   ├── components/
-│   │   │   │   ├── DoctorCard.tsx
-│   │   │   │   ├── FAQSection.tsx
-│   │   │   │   ├── HeroSection.tsx
-│   │   │   │   ├── ServicesList.tsx
-│   │   │   │   ├── StatsSection.tsx
-│   │   │   │   └── TestimonialsCarousel.tsx
-│   │   │   └── index.tsx
 │   │   └── booking/                    # Appointment Booking Feature
 │   │       ├── components/
-│   │       │   ├── BookingForm.tsx     # RHF + Zod booking form
-│   │       │   └── BookingSuccess.tsx  # Confirmation card with booking reference
+│   │       │   ├── BookingForm.tsx     # RHF + Zod booking form with inline error state
+│   │       │   └── BookingSuccess.tsx  # Confirmation card distinguishing real vs mock mode
 │   │       ├── schemas/
 │   │       │   └── booking.schema.ts   # Zod validation schema & time slots
 │   │       ├── services/
-│   │       │   └── BookingService.ts   # WhatsApp notification handler & logger
+│   │       │   └── BookingService.ts   # Client service calling /api/booking/whatsapp
 │   │       └── index.tsx
-│   │
-│   ├── shared/                         # Shared Reusable Layer
-│   │   ├── constants/
-│   │   │   ├── errors.ts               # Standard error messages
-│   │   │   └── http.ts                 # HTTP status constants
-│   │   ├── hooks/
-│   │   │   ├── useApi.ts               # Generic API hook with retry & RDF logging
-│   │   │   ├── useAsync.ts             # Promise lifecycle state hook
-│   │   │   ├── useLocalStorage.ts      # Typed localStorage hook with cross-tab sync
-│   │   │   └── index.ts
-│   │   ├── types/
-│   │   │   └── index.ts                # Common response, toast, and async types
-│   │   └── utils/
-│   │       ├── formatters.ts           # Date, 12h time, and phone formatters
-│   │       ├── response.ts             # ResponseShape envelope helpers
-│   │       └── validators.ts           # Phone & date validation helpers
-│   │
-│   ├── components/                     # App Shell Components
-│   │   ├── ErrorBoundary.tsx           # React class error boundary with RDF logging
-│   │   ├── Footer.tsx                  # Clinic contact info & operating hours
-│   │   ├── Navbar.tsx                  # Sticky navbar with mobile drawer
-│   │   └── Toast.tsx                   # Toast notification context & alerts
-│   │
-│   ├── App.tsx                         # Root app orchestrator
-│   ├── index.css                       # Tailwind CSS directives & animations
-│   ├── main.tsx                        # Entry point (initializes RDF before React mount)
-│   └── vite-env.d.ts                   # Vite environment variable types
-│
-├── .env.example                        # Template for environment configuration
-├── .env                                # Local development configuration
+│   ├── shared/                         # Shared constants, hooks, types & utilities
+│   ├── components/                     # App Shell (ErrorBoundary, Navbar, Footer, Toast)
+│   ├── App.tsx
+│   ├── main.tsx
+│   └── vite-env.d.ts
+├── tests/
+│   └── whatsapp-booking.test.tsx       # Automated verification suite
+├── .env.example                        # Template for server & client environment variables
 ├── package.json
-├── postcss.config.js                   # PostCSS configuration for Tailwind CSS
-├── tailwind.config.js                  # Tailwind theme and custom clinic color palette
-├── tsconfig.json                       # TypeScript configuration
-└── vite.config.ts                      # Vite bundler configuration
+└── vite.config.ts                      # Vite config + local /api/booking/whatsapp server middleware
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Local Development
 
 ### 1. Prerequisites
-- **Node.js**: version `18.0.0` or higher
+- **Node.js**: version `18.0.0` or higher (`v22+` recommended)
 - **npm**: version `9.0.0` or higher
 
 ### 2. Installation
 ```bash
-# Navigate to project directory
-cd clinic-app
-
-# Install dependencies
+cd ClinicApp
 npm install
 ```
 
@@ -149,148 +99,173 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Open `.env` and set your configuration:
+Open `.env` and configure the server-side variables:
 ```env
-# The clinic owner's WhatsApp number WITH country code (no + sign or spaces)
-# Example for Saudi Arabia (+966 51 234 5678):
-VITE_CALLMEBOT_PHONE=966512345678
+# Server-only CallMeBot recipient phone (with country code, no + or spaces)
+CALLMEBOT_PHONE=966512345678
 
-# Your CallMeBot API key
-VITE_CALLMEBOT_APIKEY=your_callmebot_api_key_here
+# Server-only CallMeBot API key (never prefix with VITE_)
+CALLMEBOT_APIKEY=your_callmebot_api_key_here
 
-# Keep false during development (mocks WhatsApp calls & logs to console)
-# Set to true in production
-VITE_WHATSAPP_ENABLED=false
+# Set to 'false' for local simulated mock mode, or 'true' to send real WhatsApp notifications
+WHATSAPP_ENABLED=false
 ```
 
-### 4. Run Development Server
+### 4. Run Local Development Server (Frontend + Local Backend Endpoint)
 ```bash
 npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+> **How the local server endpoint works:** `vite.config.ts` mounts the Node.js handler (`src/server/whatsappNotification.ts`) directly onto Vite's HTTP server at `POST /api/booking/whatsapp` during both `npm run dev` and `npm run preview`. You do not need to run a separate backend process locally. Alternatively, if using the Vercel CLI, you can run `npx vercel dev`.
+
+### 5. Run Tests & Type-Check
+```bash
+# Run automated test suite
+npm test
+
+# Run TypeScript type-check
+npm run typecheck
+
+# Build for production
+npm run build
+```
+
 ---
 
-## 📱 WhatsApp Setup (CallMeBot)
+## 📱 WhatsApp Provider Setup (CallMeBot)
 
-The app uses **CallMeBot**, a free, serverless API that sends WhatsApp messages directly from web applications without requiring a backend server.
+The server endpoint (`POST /api/booking/whatsapp`) uses **CallMeBot** (`https://api.callmebot.com/whatsapp.php`) to send a WhatsApp notification from the server to the clinic owner's phone number.
 
-### How the Clinic Owner Sets Up CallMeBot (One-time, 2 minutes):
-1. Add the CallMeBot phone number to your WhatsApp contacts:
-   - Phone number: `+34 644 59 77 39`
-   - Name: `CallMeBot`
-2. Open WhatsApp and send the following message to that contact:
+### How the Clinic Owner Activates CallMeBot:
+1. Check [CallMeBot's official WhatsApp API page](https://www.callmebot.com/blog/free-api-whatsapp-messages/) for the currently active bot phone number (historically `+34 644 59 77 39`) and save it in your phone contacts as `CallMeBot`.
+   - *Note:* CallMeBot's free personal gateway periodically reaches capacity (`+34*********` shown when full). If you already have an activated number and lost your key, send `Recover APIKey` to your existing CallMeBot contact on WhatsApp.
+2. Open WhatsApp and send the exact activation phrase to the contact:
    ```text
    I allow callmebot to send me messages
    ```
-3. CallMeBot will reply within a few seconds with your personal **API key**:
+3. CallMeBot will reply on WhatsApp with your personal **API key**:
    ```text
-   CallMeBot API Activated for +966512345678. Your APIKey is: 123456
+   API Activated for your phone number. Your APIKEY is 123456
    ```
-4. Put your phone number and API key in `.env`:
+4. Set the credentials in your server `.env` (or hosting platform environment settings):
    ```env
-   VITE_CALLMEBOT_PHONE=966512345678
-   VITE_CALLMEBOT_APIKEY=123456
-   VITE_WHATSAPP_ENABLED=true
+   CALLMEBOT_PHONE=966512345678
+   CALLMEBOT_APIKEY=123456
+   WHATSAPP_ENABLED=true
    ```
 
-### Message Format Received by Clinic Owner:
-```
+### Alternative Providers (If CallMeBot Registration Is Unavailable)
+If CallMeBot is at capacity for new registrations or you need multi-recipient commercial SLA guarantees:
+- **Official Meta WhatsApp Cloud API**: Direct Graph API integration (`POST https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages`). Requires a Meta Developer App, verified Business Portfolio, system user access token, and approved message template. Lowest per-message cost and highest reliability, but higher initial verification complexity.
+- **Twilio WhatsApp API**: REST endpoint (`POST https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json`) using `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`. Provides a pre-configured WhatsApp Sandbox for immediate developer testing and straightforward template approval for production, with per-message usage pricing.
+
+### Message Format Sent to Clinic Owner
+To protect patient privacy, **free-text clinical notes (`message`) are never transmitted over WhatsApp**. Only the minimum information required to identify and manage the booking is sent:
+```text
 🏥 *New Appointment Request — MindCare Clinic*
 
+🔖 *Booking ID:* BK-1761088800000-A1B2C
 👤 *Patient:* Layla Al-Ahmad
 📱 *Phone:* 0512345678
 💆 *Session:* Cognitive Behavioral Therapy
-📅 *Date:* Monday, October 12, 2026
+📅 *Date:* Saturday, October 24, 2026
 ⏰ *Time:* 10:00 AM
-💬 *Notes:* Experiencing chronic work stress and trouble sleeping.
 
-📌 Reply to confirm or reschedule.
+📌 Reply to the patient to confirm or reschedule.
 ```
 
 ---
 
-## 🛠️ Developer Console Diagnostics (`window.__DEV__`)
+## 🔀 Mock Mode vs. Real Sending & Precedence Rules
 
-In development mode (`import.meta.env.DEV === true`), the RDF toolkit is mounted globally to `window.__DEV__`. Open Chrome DevTools (`F12`) and test:
+### Mode Resolution Precedence
+1. **Server Enforcement Boundary (`/api/booking/whatsapp`)**:
+   - The server endpoint always checks its own server-side environment variables (`WHATSAPP_ENABLED`, `CALLMEBOT_PHONE`, `CALLMEBOT_APIKEY`).
+   - Browser feature flags **cannot** expose, override, or bypass server credentials. If the browser calls `/api/booking/whatsapp` while `WHATSAPP_ENABLED` is `false` or credentials are missing on the server, the server responds with HTTP `503` (`WHATSAPP_DISABLED` or `CONFIGURATION_ERROR`).
+2. **Environment Configuration (`src/framework/init.ts`)**:
+   - If `MOCK_BOOKING=true` is set in `.env`: `mockBooking = true`, `whatsappEnabled = false`.
+   - Else if `WHATSAPP_ENABLED=true` is set in `.env`: `whatsappEnabled = true`, `mockBooking = false` (**even in `npm run dev`**, so development mode executes the real flow when configured).
+   - Else (`WHATSAPP_ENABLED=false` or unset):
+     - In **development** (`npm run dev`): defaults to `mockBooking = true`, `whatsappEnabled = false` (simulated mode).
+     - In **production** (`npm run build`): defaults to `mockBooking = false`, `whatsappEnabled = false`. Submitting a booking in an unconfigured production deployment produces an explicit configuration error rather than silently claiming a mock notification was sent.
+3. **Runtime Developer Feature Flags (`window.__DEV__.features`)**:
+   - In development, enabling `whatsappEnabled` (`window.__DEV__.features.enable('whatsappEnabled')` or `toggle('whatsappEnabled')`) automatically disables `mockBooking` so the client sends requests to `/api/booking/whatsapp`.
+   - Enabling `mockBooking` (`window.__DEV__.features.enable('mockBooking')`) automatically disables `whatsappEnabled` to test simulated mode.
 
-```javascript
-// 1. Inspect recent structured logs
-window.__DEV__.logger.getLogs();
-
-// 2. Filter logs by level or namespace
-window.__DEV__.logger.getLogs({ level: 'ERROR' });
-window.__DEV__.logger.getByNamespace('booking:.*');
-
-// 3. View logging statistics summary
-window.__DEV__.logger.stats();
-
-// 4. Export all logs as JSON or CSV
-console.log(window.__DEV__.logger.export('csv'));
-
-// 5. Simulate slow network for booking (adds 2500ms delay)
-window.__DEV__.api.setDelay('booking:whatsapp', 2500);
-
-// 6. Simulate API failure on booking (test error handling)
-window.__DEV__.api.setError('booking:whatsapp', 500, 'Simulated WhatsApp Gateway Error');
-
-// 7. Clear simulated errors
-window.__DEV__.api.clearError('booking:whatsapp');
-
-// 8. Generate additional mock data on the fly
-window.__DEV__.factory.create('testimonial', { count: 3 });
-
-// 9. Inspect or toggle feature flags
-window.__DEV__.features.getAll();
-window.__DEV__.features.toggle('whatsappEnabled');
-
-// 10. Reset all simulators and clear logs
-window.__DEV__.resetAll();
-```
+### How to Safely Test a Real Notification
+1. Configure valid `CALLMEBOT_PHONE` (your own authorized WhatsApp number), `CALLMEBOT_APIKEY`, and `WHATSAPP_ENABLED=true` in `.env`.
+2. Start the server with `npm run dev`.
+3. Submit a single booking on `http://localhost:5173/#booking` using test details, or test the server endpoint directly via `curl`:
+   ```bash
+   curl -i -X POST http://localhost:5173/api/booking/whatsapp \
+     -H "Content-Type: application/json" \
+     -d '{
+       "bookingId": "BK-TEST-001",
+       "fullName": "Test Patient",
+       "phone": "0512345678",
+       "sessionType": "Free Consultation",
+       "preferredDate": "2026-11-15",
+       "preferredTime": "10:00"
+     }'
+   ```
+4. Verify that the endpoint returns HTTP `200` with `"deliveryStatus": "accepted"` and that the WhatsApp message arrives on the configured `CALLMEBOT_PHONE`.
 
 ---
 
-## 🚢 Production Deployment
+## ⚠️ What "Success" Means & Data Persistence
 
-### Build for Production
-```bash
-npm run build
-```
-This produces an optimized, minified bundle in `/dist` with tree-shaken assets and compiled CSS.
+- **No Persistent Database**: `ClinicApp` does **not** use a database or persistent backend storage for appointments.
+- **Provider Acceptance vs. Final Delivery**:
+  - In **Real Mode**, a successful response (`deliveryStatus: "accepted"`) means the server validated the booking request and **CallMeBot accepted and queued the notification** (`Message queued`). It does **not** prove the clinic owner has received or read the message on their device, nor does it mean the appointment is durably stored in a database.
+  - In **Mock Mode**, a successful response (`deliveryStatus: "simulated"`) means the request was simulated locally in the browser; **no WhatsApp message was sent**.
+  - If notification delivery fails in real mode, the booking submission fails with an inline error banner and toast alert so the patient knows their request was not delivered and can retry or contact the clinic directly.
+
+---
+
+## 🚢 Hosting & Production Deployment
+
+Because real WhatsApp notifications require the server-side endpoint (`POST /api/booking/whatsapp`), deploy to a platform that supports Node.js serverless functions (such as **Vercel**) or run a Node server alongside the built assets. Static-only hosting of `/dist` without `/api/booking/whatsapp` will fail in real mode.
+
+### Deploy to Vercel (Recommended)
+1. Push the repository to GitHub/GitLab and import it into [Vercel](https://vercel.com).
+2. Set **Root Directory** to `ClinicApp` (if deploying from a parent repo).
+3. Vercel automatically detects Vite for the frontend build (`npm run build` -> `dist`) and mounts `api/booking/whatsapp.ts` as a Node.js Serverless Function at `/api/booking/whatsapp`.
+4. Under **Project Settings > Environment Variables**, add the **server-only** variables:
+   - `CALLMEBOT_PHONE`: Clinic owner's WhatsApp number with country code (e.g. `966512345678`)
+   - `CALLMEBOT_APIKEY`: Clinic owner's CallMeBot API key
+   - `WHATSAPP_ENABLED`: `true`
+5. Redeploy the project.
 
 ### Preview Production Build Locally
 ```bash
+npm run build
 npm run preview
 ```
+`npm run preview` serves the production bundle from `/dist` and attaches the `/api/booking/whatsapp` middleware on the preview server.
 
-### Deploy to Vercel
-1. Push the code to GitHub/GitLab.
-2. Import the repository into [Vercel](https://vercel.com).
-3. Set **Root Directory** to `clinic-app`.
-4. Under **Environment Variables**, add:
-   - `VITE_CALLMEBOT_PHONE`: Your WhatsApp number (e.g. `966512345678`)
-   - `VITE_CALLMEBOT_APIKEY`: Your CallMeBot API key
-   - `VITE_WHATSAPP_ENABLED`: `true`
-5. Click **Deploy**.
+---
 
-### Deploy to Netlify
-1. Connect repository in [Netlify](https://netlify.com).
-2. Set **Base directory**: `clinic-app`
-3. Set **Build command**: `npm run build`
-4. Set **Publish directory**: `dist`
-5. In **Site Configuration > Environment Variables**, add:
-   - `VITE_CALLMEBOT_PHONE`
-   - `VITE_CALLMEBOT_APIKEY`
-   - `VITE_WHATSAPP_ENABLED=true`
-6. Click **Deploy site**.
+## 🔧 Troubleshooting
+
+| Symptom / Error Code | Cause | Resolution |
+| --- | --- | --- |
+| `WHATSAPP_DISABLED` (HTTP 503) | `WHATSAPP_ENABLED` is `false` or unset in the server environment. | Set `WHATSAPP_ENABLED=true` in `.env` (local) or your hosting provider's Environment Variables, then restart/redeploy. |
+| `CONFIGURATION_ERROR` (HTTP 503) | `CALLMEBOT_PHONE` or `CALLMEBOT_APIKEY` is missing, invalid, or still set to the `.env.example` placeholder (`your_callmebot_api_key_here`). | Set valid server-side `CALLMEBOT_PHONE` (8–15 digits with country code, no `+`) and `CALLMEBOT_APIKEY` in `.env`. Never use `VITE_CALLMEBOT_APIKEY`. |
+| `PROVIDER_AUTH_ERROR` (HTTP 502) | CallMeBot returned `APIKey is invalid` or `invalid format` (often with HTTP 201/203). | Verify `CALLMEBOT_APIKEY` matches the key issued to `CALLMEBOT_PHONE`. Send `Recover APIKey` to the CallMeBot WhatsApp contact if needed. |
+| `PROVIDER_RECIPIENT_ERROR` (HTTP 502) | CallMeBot rejected the phone number format or the number has not activated the bot. | Ensure `CALLMEBOT_PHONE` includes the country code (e.g. `966512345678`) and has sent `"I allow callmebot to send me messages"` to CallMeBot. |
+| `PROVIDER_TIMEOUT` (HTTP 504) | CallMeBot did not respond within `CALLMEBOT_TIMEOUT_MS` (default 10s). | Check server outbound internet connectivity or increase `CALLMEBOT_TIMEOUT_MS` (up to `30000`). |
+| `RATE_LIMITED` (HTTP 429) | More than 5 notification requests were sent from the same IP within 60 seconds. | Wait for the `Retry-After` window to elapse, or adjust `WHATSAPP_RATE_LIMIT_MAX` for testing. |
+| `404 Not Found` on `/api/booking/whatsapp` in production | Deployed to a static-only host that does not execute `api/booking/whatsapp.ts`. | Deploy to Vercel (which runs `api/booking/whatsapp.ts`) or host behind a Node.js server mounting `handleNodeHttpRequest`. |
 
 ---
 
 ## 🔒 Security & Privacy
 
-- **No Passwords / Credentials in Logs**: RDF Logger includes automatic sanitization that redacts values for keys matching `password`, `secret`, `token`, `key`, `credential`, or `apikey`.
-- **Form Privacy**: Form inputs are processed purely client-side and dispatched directly over encrypted HTTPS without intermediary storage.
-- **Client-Side Data Sanitization**: Form values are validated against rigorous Zod schemas before being passed to the network layer.
+- **Server-Only Credentials**: `CALLMEBOT_APIKEY` and `CALLMEBOT_PHONE` are read exclusively on the server and are never exposed to the browser bundle, network tab, or error responses.
+- **Clinical Note Privacy**: Free-text patient notes (`message`) are excluded from the WhatsApp notification payload and message text.
+- **Log Redaction**: Neither client logs (`localStorage` / console) nor server logs record API keys, patient phone numbers, patient names, or clinical notes.
+- **Abuse Protection**: `POST /api/booking/whatsapp` enforces a 4 KB payload limit, strict schema validation, and per-IP rate limiting.
 
 ---
 

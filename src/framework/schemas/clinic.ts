@@ -29,8 +29,8 @@ export const CLINIC_INFO: ClinicInfo = {
   address:        'Al Olaya District, King Fahad Road',
   city:           'Riyadh, Saudi Arabia',
   phone:          '+966 11 234 5678',
-  // Replace with the clinic owner's WhatsApp number (with country code, no +)
-  whatsappNumber: import.meta.env.VITE_CALLMEBOT_PHONE ?? '8489347238',
+  // Public clinic WhatsApp contact number for wa.me chat links (with country code, no +)
+  whatsappNumber: import.meta.env?.VITE_CLINIC_WHATSAPP_NUMBER ?? '966112345678',
   email:          'hello@mindcareclinic.sa',
   hours: {
     weekdays: 'Sunday – Thursday: 9:00 AM – 8:00 PM',
